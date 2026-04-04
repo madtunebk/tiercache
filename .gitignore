@@ -31,3 +31,8 @@ htmlcov/
 # Project specific
 media/
 notes.txt
+
+# PyPI token
+__token__
+.pypirc
+*.token
