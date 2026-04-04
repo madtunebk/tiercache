@@ -1,4 +1,4 @@
-SmartCache — Design Document
+TierCache — Design Document
 ============================
 
 
@@ -16,12 +16,12 @@ OVERVIEW
 A Python pip package implementing a three-tier hierarchical cache with
 swappable backends per tier. Designed to be dropped into any project.
 
-    pip install smartcache
-    pip install smartcache[memcached]
-    pip install smartcache[s3]
-    pip install smartcache[mongodb]
-    pip install smartcache[postgres]
-    pip install smartcache[all]
+    pip install tiercache
+    pip install tiercache[memcached]
+    pip install tiercache[s3]
+    pip install tiercache[mongodb]
+    pip install tiercache[postgres]
+    pip install tiercache[all]
 
 
 TIERS
@@ -64,7 +64,7 @@ TTLs are resolved in this order:
   1. Per-key override  →  cache.set("key", data, ttl_hours=1)
   2. Per-call tag      →  cache.set("key", data, tags={"type": "thumbnail"})
                           matched against tag rules in config
-  3. Tier default      →  hot_cache.ttl_hours in smartcache.yaml
+  3. Tier default      →  hot_cache.ttl_hours in tiercache.yaml
   4. Global default    →  hot: 4h, cold: 24h, dry: no expiry
 
 This means the user can:
@@ -144,7 +144,7 @@ CONFIGURATION
 -------------
 Configured via a YAML file or passed as a dict in code.
 
-Example smartcache.yaml:
+Example tiercache.yaml:
 
     hot_cache:
       backend: ram          # ram | memcached
@@ -160,7 +160,7 @@ Example smartcache.yaml:
       backend: local        # local | s3 | mongodb
       ttl_hours: null       # null = no expiry (default)
       max_size_gb: 100
-      path: /var/cache/smartcache/dry
+      path: /var/cache/tiercache/dry
 
     tracking:
       backend: redis        # redis | sqlite | postgres | mongodb
@@ -187,22 +187,22 @@ Example smartcache.yaml:
 
     s3:                     # only needed if dry backend is s3
       endpoint_url: ...
-      bucket: smartcache
+      bucket: tiercache
       access_key: ...
       secret_key: ...
 
     mongodb:                # only needed if dry or tracking uses mongodb
       uri: mongodb://localhost:27017
-      database: smartcache
+      database: tiercache
 
 
 PUBLIC API
 ----------
 
-    from smartcache import CacheManager
+    from tiercache import CacheManager
 
     # Load from config file
-    cache = CacheManager.from_config("smartcache.yaml")
+    cache = CacheManager.from_config("tiercache.yaml")
 
     # Or configure in code
     cache = CacheManager(
@@ -238,10 +238,10 @@ PUBLIC API
 PROJECT STRUCTURE
 -----------------
 
-    smartcache/
+    tiercache/
     ├── pyproject.toml
     ├── src/
-    │   └── smartcache/
+    │   └── tiercache/
     │       ├── __init__.py             ← public API surface
     │       ├── manager.py              ← CacheManager, lookup chain logic
     │       ├── config.py               ← YAML loading, validation
@@ -271,12 +271,12 @@ Note: hot and cold share the same backend implementations (ram.py, memcached.py)
 OPTIONAL DEPENDENCIES (extras)
 -------------------------------
 
-    pip install smartcache               → base only (RAM + local + Redis tracking)
-    pip install smartcache[memcached]    → adds Memcached hot/cold backends
-    pip install smartcache[s3]           → adds S3 dry backend
-    pip install smartcache[mongodb]      → adds MongoDB dry backend + tracking
-    pip install smartcache[postgres]     → adds PostgreSQL tracking
-    pip install smartcache[all]          → everything
+    pip install tiercache               → base only (RAM + local + Redis tracking)
+    pip install tiercache[memcached]    → adds Memcached hot/cold backends
+    pip install tiercache[s3]           → adds S3 dry backend
+    pip install tiercache[mongodb]      → adds MongoDB dry backend + tracking
+    pip install tiercache[postgres]     → adds PostgreSQL tracking
+    pip install tiercache[all]          → everything
 
 
 PACKAGING STANDARDS
