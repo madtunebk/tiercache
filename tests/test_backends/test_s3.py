@@ -27,7 +27,7 @@ async def backend():
         if BUCKET not in existing:
             await s3.create_bucket(Bucket=BUCKET)
 
-    from smartcache.backends.dry.s3 import S3Backend
+    from tiercache.backends.dry.s3 import S3Backend
     b = S3Backend(
         bucket=BUCKET,
         endpoint_url=ENDPOINT,

@@ -50,7 +50,7 @@ all = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/smartcache"]
+packages = ["src/tiercache"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

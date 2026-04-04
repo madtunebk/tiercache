@@ -14,7 +14,7 @@ DATABASE  = "tiercache_test"
 
 @pytest.fixture
 async def backend():
-    from smartcache.backends.dry.mongodb import MongoDBBackend
+    from tiercache.backends.dry.mongodb import MongoDBBackend
     b = MongoDBBackend(uri=MONGO_URI, database=DATABASE)
     yield b
     await b.flush()

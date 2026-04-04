@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from smartcache.backends.ram import RamBackend
+from tiercache.backends.ram import RamBackend
 
 
 @pytest.fixture

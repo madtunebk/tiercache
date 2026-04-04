@@ -1,8 +1,8 @@
 import pytest
-from smartcache import CacheManager
-from smartcache.backends.ram import RamBackend
-from smartcache.backends.dry.local import LocalBackend
-from smartcache.tracking.sqlite import SQLiteTracking
+from tiercache import CacheManager
+from tiercache.backends.ram import RamBackend
+from tiercache.backends.dry.local import LocalBackend
+from tiercache.tracking.sqlite import SQLiteTracking
 
 
 @pytest.fixture

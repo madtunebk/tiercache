@@ -28,13 +28,13 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 
-from smartcache import CacheManager
+from tiercache import CacheManager
 
-# Override with SMARTCACHE_CONFIG env var to switch between configs:
-#   SMARTCACHE_CONFIG=example/config_ram.yaml        uvicorn ...
-#   SMARTCACHE_CONFIG=example/config_memcached.yaml  uvicorn ...
+# Override with TIERCACHE_CONFIG env var to switch between configs:
+#   TIERCACHE_CONFIG=example/config_ram.yaml        uvicorn ...
+#   TIERCACHE_CONFIG=example/config_memcached.yaml  uvicorn ...
 _DEFAULT_CONFIG = Path(__file__).parent / "config_ram.yaml"
-_CONFIG = Path(os.environ.get("SMARTCACHE_CONFIG", _DEFAULT_CONFIG))
+_CONFIG = Path(os.environ.get("TIERCACHE_CONFIG", _DEFAULT_CONFIG))
 _cache: Optional[CacheManager] = None
 
 _FALLBACK_CT = "application/octet-stream"

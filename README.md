@@ -1,9 +1,9 @@
-# SmartCache
+# TierCache
 
 RAM-first three-tier cache for Python. Designed to keep your SSD/HDD out of the hot path.
 
 ```
-pip install smartcache
+pip install tiercache
 ```
 
 ---
@@ -37,25 +37,25 @@ After a server restart, the first GET recovers each item from dry back into hot.
 
 ```bash
 # Base (RAM + local filesystem + SQLite tracking)
-pip install smartcache
+pip install tiercache
 
 # With Memcached backends (multi-process / multi-server)
-pip install "smartcache[memcached]"
+pip install "tiercache[memcached]"
 
 # With Redis tracking
-pip install "smartcache[redis]"
+pip install "tiercache[redis]"
 
 # With S3 dry cache
-pip install "smartcache[s3]"
+pip install "tiercache[s3]"
 
 # With MongoDB
-pip install "smartcache[mongodb]"
+pip install "tiercache[mongodb]"
 
 # With PostgreSQL tracking
-pip install "smartcache[postgres]"
+pip install "tiercache[postgres]"
 
 # Everything
-pip install "smartcache[all]"
+pip install "tiercache[all]"
 ```
 
 ---
@@ -65,9 +65,9 @@ pip install "smartcache[all]"
 ### From a config file
 
 ```python
-from smartcache import CacheManager
+from tiercache import CacheManager
 
-cache = CacheManager.from_config("smartcache.yaml")
+cache = CacheManager.from_config("tiercache.yaml")
 
 # Async (FastAPI, aiohttp, Sanic)
 value = await cache.get("my-key")
@@ -81,10 +81,10 @@ cache.set_sync("my-key", data)
 ### In code
 
 ```python
-from smartcache import CacheManager
-from smartcache.backends.ram import RamBackend
-from smartcache.backends.dry.local import LocalBackend
-from smartcache.tracking.sqlite import SQLiteTracking
+from tiercache import CacheManager
+from tiercache.backends.ram import RamBackend
+from tiercache.backends.dry.local import LocalBackend
+from tiercache.tracking.sqlite import SQLiteTracking
 
 cache = CacheManager(
     hot=RamBackend(ttl_seconds=14400, max_size_bytes=2 * 1024**3),
@@ -99,7 +99,7 @@ cache = CacheManager(
 ## Configuration
 
 ```yaml
-# smartcache.yaml
+# tiercache.yaml
 
 hot_cache:
   backend: ram          # ram | memcached
@@ -171,7 +171,7 @@ tracking:
 
 mongodb:
   uri: mongodb://localhost:27017
-  database: smartcache
+  database: tiercache
 ```
 
 ### Redis tracking
@@ -285,7 +285,7 @@ curl "http://localhost:8989/stats"
 ## Why not just use Redis for everything?
 
 Redis is great but it is a network service — every cache hit is a round trip.
-SmartCache's RAM backend (`ram`) stores values directly in the Python process
+TierCache's RAM backend (`ram`) stores values directly in the Python process
 memory, making hot-path lookups **microsecond-range** with zero network overhead.
 
 Use `memcached` when you need shared cache across multiple processes or servers.

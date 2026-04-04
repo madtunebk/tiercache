@@ -14,7 +14,7 @@ DATABASE  = "tiercache_test"
 
 @pytest.fixture
 async def tracker():
-    from smartcache.tracking.mongodb import MongoDBTracking
+    from tiercache.tracking.mongodb import MongoDBTracking
     t = MongoDBTracking(uri=MONGO_URI, database=DATABASE)
     yield t
     await t.close()

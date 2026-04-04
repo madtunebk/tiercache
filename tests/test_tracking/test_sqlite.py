@@ -1,5 +1,5 @@
 import pytest
-from smartcache.tracking.sqlite import SQLiteTracking
+from tiercache.tracking.sqlite import SQLiteTracking
 
 
 @pytest.fixture

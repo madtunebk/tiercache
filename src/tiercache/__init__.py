@@ -3,16 +3,16 @@ SmartCache — RAM-first three-tier cache with swappable backends.
 
 Quick start:
 
-    from smartcache import CacheManager
+    from tiercache import CacheManager
 
     # From config file
     cache = CacheManager.from_config("smartcache.yaml")
 
     # Or in code
-    from smartcache import CacheManager
-    from smartcache.backends.ram import RamBackend
-    from smartcache.backends.dry.local import LocalBackend
-    from smartcache.tracking.sqlite import SQLiteTracking
+    from tiercache import CacheManager
+    from tiercache.backends.ram import RamBackend
+    from tiercache.backends.dry.local import LocalBackend
+    from tiercache.tracking.sqlite import SQLiteTracking
 
     cache = CacheManager(
         hot=RamBackend(ttl_seconds=14400, max_size_bytes=2 * 1024**3),
