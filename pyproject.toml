@@ -3,16 +3,37 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "smartcache"
+name = "tiercache"
 version = "0.1.0"
 description = "RAM-first three-tier cache with swappable backends"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Cornea Valentin", email = "valicornea84@gmail.com" }
+]
+keywords = ["cache", "memcached", "ram", "tiered-cache", "async", "fastapi", "django", "flask"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Distributed Computing",
+    "Framework :: AsyncIO",
+]
 dependencies = [
     "pyyaml>=6.0",
     "aiofiles>=23.0",
     "aiosqlite>=0.19",
     "msgpack>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/madtunebk/tiercache"
+Repository = "https://github.com/madtunebk/tiercache"
+Issues = "https://github.com/madtunebk/tiercache/issues"
 
 [project.optional-dependencies]
 memcached = ["aiomcache>=0.8"]
@@ -21,11 +42,11 @@ s3        = ["aioboto3>=12.0"]
 mongodb   = ["motor>=3.0"]
 postgres  = ["asyncpg>=0.29"]
 all = [
-    "smartcache[memcached]",
-    "smartcache[redis]",
-    "smartcache[s3]",
-    "smartcache[mongodb]",
-    "smartcache[postgres]",
+    "tiercache[memcached]",
+    "tiercache[redis]",
+    "tiercache[s3]",
+    "tiercache[mongodb]",
+    "tiercache[postgres]",
 ]
 
 [tool.hatch.build.targets.wheel]
