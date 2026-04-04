@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Build / dist
+dist/
+build/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / tools
+.claude/
+.idea/
+.vscode/
+
+# Cache data
+/tmp/smartcache/
+
+# Project specific
+media/
+notes.txt

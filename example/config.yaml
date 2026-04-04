@@ -1,0 +1,27 @@
+hot_cache:
+  backend: ram
+  ttl_hours: 4
+  max_size_gb: 2
+
+cold_cache:
+  backend: ram
+  ttl_hours: 24
+  max_size_gb: 10
+
+dry_cache:
+  backend: local
+  max_size_gb: 100
+  path: /tmp/smartcache/dry
+
+tracking:
+  backend: sqlite
+  path: /tmp/smartcache/index.db
+
+# Optional tag-based TTL rules
+ttl_rules:
+  - tag: { type: thumbnail }
+    hot_ttl_hours: 1
+    cold_ttl_hours: 6
+  - tag: { type: raw }
+    hot_ttl_hours: 8
+    cold_ttl_hours: 48

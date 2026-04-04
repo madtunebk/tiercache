@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smartcache"
+version = "0.1.0"
+description = "RAM-first three-tier cache with swappable backends"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "aiofiles>=23.0",
+    "aiosqlite>=0.19",
+    "msgpack>=1.0",
+]
+
+[project.optional-dependencies]
+memcached = ["aiomcache>=0.8"]
+redis     = ["redis>=5.0"]
+s3        = ["aioboto3>=12.0"]
+mongodb   = ["motor>=3.0"]
+postgres  = ["asyncpg>=0.29"]
+all = [
+    "smartcache[memcached]",
+    "smartcache[redis]",
+    "smartcache[s3]",
+    "smartcache[mongodb]",
+    "smartcache[postgres]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smartcache"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

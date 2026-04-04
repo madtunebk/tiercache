@@ -1,0 +1,289 @@
+SmartCache — Design Document
+============================
+
+
+CORE PHILOSOPHY
+---------------
+RAM-first. Hit disk as rarely as possible.
+
+Hot and cold tiers live entirely in memory — no SSD, no HDD.
+Dry is the only disk tier and should be a last resort.
+The goal is to serve 95%+ of requests from RAM.
+
+
+OVERVIEW
+--------
+A Python pip package implementing a three-tier hierarchical cache with
+swappable backends per tier. Designed to be dropped into any project.
+
+    pip install smartcache
+    pip install smartcache[memcached]
+    pip install smartcache[s3]
+    pip install smartcache[mongodb]
+    pip install smartcache[postgres]
+    pip install smartcache[all]
+
+
+TIERS
+-----
+
+Hot Cache
+  Purpose   : Fastest access, short-lived. Serves the majority of hits.
+  Storage   : RAM only
+  TTL       : 4 hours (configurable)
+  Default   : RAM (in-process)
+  Options   : RAM, Memcached
+  Max size  : 2 GB (configurable)
+
+Cold Cache
+  Purpose   : Larger RAM pool, longer-lived. Fallback when hot misses.
+  Storage   : RAM only
+  TTL       : 24 hours (configurable)
+  Default   : RAM (in-process)
+  Options   : RAM, Memcached
+  Max size  : 10 GB (configurable)
+
+Dry Cache
+  Purpose   : Disk-based last resort. Only hit when both RAM tiers miss.
+  Storage   : Disk / object storage
+  TTL       : None by default (configurable)
+  Default   : Local filesystem
+  Options   : Local filesystem, S3-compatible, MongoDB (GridFS)
+  Max size  : 100 GB (configurable)
+
+Note:
+  Hot and cold use the same backend options. The difference is size and TTL.
+  Hot = small + short-lived (most frequent hits).
+  Cold = larger + longer-lived (warm data that didn't fit or expired from hot).
+
+
+TTL PRIORITY (highest wins)
+--------------------------
+TTLs are resolved in this order:
+
+  1. Per-key override  →  cache.set("key", data, ttl_hours=1)
+  2. Per-call tag      →  cache.set("key", data, tags={"type": "thumbnail"})
+                          matched against tag rules in config
+  3. Tier default      →  hot_cache.ttl_hours in smartcache.yaml
+  4. Global default    →  hot: 4h, cold: 24h, dry: no expiry
+
+This means the user can:
+  - Set a global default in the config file
+  - Override per tag/category (e.g. thumbnails expire faster than raw files)
+  - Override per individual key at set time
+
+
+LOOKUP BEHAVIOR
+---------------
+On every cache.get(key):
+
+  1. Check hot cache  (RAM)
+       HIT  → serve it, reset TTL, return value
+       MISS → continue
+
+  2. Check cold cache  (RAM)
+       HIT  → promote to hot cache, return value
+       MISS → continue
+
+  3. Check dry cache  (Disk — last resort)
+       HIT  → promote to hot cache, return value
+       MISS → return None (caller handles origin fetch)
+
+On cache.set(key, value, ttl_hours=None, tags=None):
+  - Writes to hot cache only
+  - ttl_hours overrides the tier default for this key only
+  - Dry cache is populated automatically on eviction (failsafe), not on write
+  - On hot/cold LRU evict or TTL expiry → value is demoted to dry
+  - On server restart all RAM is lost, but dry still holds everything
+
+
+TRACKING / METADATA
+-------------------
+Keeps a record of all cached keys, timestamps, hit counts, tier location.
+Should be fast — lives in memory where possible.
+
+  Default  : Redis (in-memory, fast key lookups, tiny metadata footprint)
+  Options  : Redis, SQLite, PostgreSQL, MongoDB
+
+Used for:
+  - Knowing which tier holds a key without probing all three
+  - Hit/miss statistics
+  - Manual inspection and cache management
+
+Why Redis as default for tracking:
+  Metadata per key is tiny (timestamps, tier, hit count). Redis holds this
+  entirely in memory with near-zero overhead. No disk I/O for lookups,
+  which fits the RAM-first philosophy.
+
+
+BACKENDS (per tier)
+-------------------
+
+Hot / Cold  (RAM only)
+  ram        — Python dict with TTL and LRU eviction, single process
+  memcached  — Distributed in-memory, great for multi-process or multi-server
+
+Dry  (Disk — last resort)
+  local    — Files on SSD/HDD, size-based cleanup
+  s3       — S3-compatible object storage (AWS S3, MinIO, Cloudflare R2)
+  mongodb  — GridFS for large binary/blob storage, flexible metadata
+
+Tracking
+  redis     — Default. In-memory, fast, fits RAM-first philosophy
+  sqlite    — Zero-dependency fallback, single .db file on disk
+  postgres  — Production relational option, strong querying
+  mongodb   — Native TTL indexes, flexible schema, good if already used for dry
+
+Note on MongoDB (dry + tracking):
+  - TTL indexes: MongoDB handles key expiry automatically, no cron needed
+  - GridFS: native large file storage split into chunks
+  - A single MongoDB instance can serve as dry backend AND tracking store
+
+
+CONFIGURATION
+-------------
+Configured via a YAML file or passed as a dict in code.
+
+Example smartcache.yaml:
+
+    hot_cache:
+      backend: ram          # ram | memcached
+      ttl_hours: 4          # default TTL — overridable per key or per tag
+      max_size_gb: 2
+
+    cold_cache:
+      backend: ram          # ram | memcached
+      ttl_hours: 24         # default TTL — overridable per key or per tag
+      max_size_gb: 10
+
+    dry_cache:
+      backend: local        # local | s3 | mongodb
+      ttl_hours: null       # null = no expiry (default)
+      max_size_gb: 100
+      path: /var/cache/smartcache/dry
+
+    tracking:
+      backend: redis        # redis | sqlite | postgres | mongodb
+
+    # Optional: TTL rules by tag
+    # Applied when cache.set() is called with a matching tag
+    ttl_rules:
+      - tag: { type: thumbnail }
+        hot_ttl_hours: 1
+        cold_ttl_hours: 12
+      - tag: { type: raw }
+        hot_ttl_hours: 8
+        cold_ttl_hours: 48
+        dry_ttl_hours: 720   # 30 days
+
+    redis:                  # only needed if tracking backend is redis
+      host: localhost
+      port: 6379
+      db: 0
+
+    memcached:              # only needed if hot/cold backend is memcached
+      host: localhost
+      port: 11211
+
+    s3:                     # only needed if dry backend is s3
+      endpoint_url: ...
+      bucket: smartcache
+      access_key: ...
+      secret_key: ...
+
+    mongodb:                # only needed if dry or tracking uses mongodb
+      uri: mongodb://localhost:27017
+      database: smartcache
+
+
+PUBLIC API
+----------
+
+    from smartcache import CacheManager
+
+    # Load from config file
+    cache = CacheManager.from_config("smartcache.yaml")
+
+    # Or configure in code
+    cache = CacheManager(
+        hot=RamBackend(ttl_hours=4, max_size_gb=2),
+        cold=RamBackend(ttl_hours=24, max_size_gb=10),
+        dry=S3Backend(bucket="my-bucket"),
+        tracking=RedisTracking(host="localhost", port=6379),
+    )
+
+    # Basic usage
+    value = await cache.get("my-key")
+
+    # Use tier default TTL
+    await cache.set("my-key", data)
+
+    # Override TTL for this key only
+    await cache.set("my-key", data, ttl_hours=2)
+
+    # Tag-based TTL (matches ttl_rules in config)
+    await cache.set("my-key", data, tags={"type": "thumbnail"})
+
+    # No expiry for this key
+    await cache.set("my-key", data, ttl_hours=None)
+
+    await cache.delete("my-key")
+    await cache.flush(tier="hot")   # clear a specific tier
+
+    # Stats
+    stats = await cache.stats()
+    # { "hot_hits": 120, "cold_hits": 30, "dry_hits": 5, "misses": 2 }
+
+
+PROJECT STRUCTURE
+-----------------
+
+    smartcache/
+    ├── pyproject.toml
+    ├── src/
+    │   └── smartcache/
+    │       ├── __init__.py             ← public API surface
+    │       ├── manager.py              ← CacheManager, lookup chain logic
+    │       ├── config.py               ← YAML loading, validation
+    │       ├── backends/
+    │       │   ├── base.py             ← AbstractBackend interface
+    │       │   ├── ram.py              ← shared by hot and cold
+    │       │   ├── memcached.py        ← shared by hot and cold
+    │       │   └── dry/
+    │       │       ├── local.py
+    │       │       ├── s3.py
+    │       │       └── mongodb.py      ← GridFS + TTL indexes
+    │       └── tracking/
+    │           ├── base.py             ← AbstractTracking interface
+    │           ├── redis.py            ← default
+    │           ├── sqlite.py
+    │           ├── postgres.py
+    │           └── mongodb.py
+    └── tests/
+        ├── test_manager.py
+        ├── test_backends/
+        └── test_tracking/
+
+Note: hot and cold share the same backend implementations (ram.py, memcached.py)
+— they are just two instances with different size and TTL config.
+
+
+OPTIONAL DEPENDENCIES (extras)
+-------------------------------
+
+    pip install smartcache               → base only (RAM + local + Redis tracking)
+    pip install smartcache[memcached]    → adds Memcached hot/cold backends
+    pip install smartcache[s3]           → adds S3 dry backend
+    pip install smartcache[mongodb]      → adds MongoDB dry backend + tracking
+    pip install smartcache[postgres]     → adds PostgreSQL tracking
+    pip install smartcache[all]          → everything
+
+
+PACKAGING STANDARDS
+-------------------
+- pyproject.toml  (PEP 517/518, modern standard — no setup.py)
+- src/ layout     (prevents accidental imports during development)
+- Semantic versioning  (1.0.0)
+- Type hints on all public methods  (PEP 484)
+- Async-first API  (asyncio, with optional sync wrappers)
+- Lazy imports for optional backends  (clear error if dep not installed)
