@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------
+# S3 example — Memcached hot/cold + S3-compatible dry cache
+# Works with AWS S3, MinIO, Cloudflare R2, etc.
+#
+# Local test with MinIO:
+#   docker compose up -d minio
+#   open http://localhost:9001  (minioadmin / minioadmin)
+#   create a bucket named "tiercache"
+#
+# Requires: pip install tiercache[memcached,s3,redis]
+# ---------------------------------------------------------------
+
+hot_cache:
+  backend: memcached
+  ttl_hours: 4
+  max_size_gb: 2
+
+cold_cache:
+  backend: memcached
+  ttl_hours: 24
+  max_size_gb: 10
+
+dry_cache:
+  backend: s3
+  max_size_gb: 100
+
+tracking:
+  backend: redis
+
+memcached:
+  host: localhost
+  port: 11211
+
+s3:
+  endpoint_url: http://localhost:9000   # remove for real AWS S3
+  bucket: tiercache
+  access_key: minioadmin
+  secret_key: minioadmin
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+
+ttl_rules:
+  - tag: { type: thumbnail }
+    hot_ttl_hours: 1
+    cold_ttl_hours: 6
+  - tag: { type: raw }
+    hot_ttl_hours: 8
+    cold_ttl_hours: 48

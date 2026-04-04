@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------
+# MongoDB example — Memcached hot/cold + MongoDB dry cache + tracking
+# One MongoDB instance handles both dry storage (GridFS) and tracking.
+# Native TTL indexes handle automatic expiry — no cron needed.
+#
+# Local test:
+#   docker compose up -d mongodb
+#
+# Requires: pip install tiercache[memcached,mongodb]
+# ---------------------------------------------------------------
+
+hot_cache:
+  backend: memcached
+  ttl_hours: 4
+  max_size_gb: 2
+
+cold_cache:
+  backend: memcached
+  ttl_hours: 24
+  max_size_gb: 10
+
+dry_cache:
+  backend: mongodb
+  max_size_gb: 100
+
+tracking:
+  backend: mongodb
+
+memcached:
+  host: localhost
+  port: 11211
+
+mongodb:
+  uri: mongodb://localhost:27017
+  database: tiercache
+
+ttl_rules:
+  - tag: { type: thumbnail }
+    hot_ttl_hours: 1
+    cold_ttl_hours: 6
+  - tag: { type: raw }
+    hot_ttl_hours: 8
+    cold_ttl_hours: 48
