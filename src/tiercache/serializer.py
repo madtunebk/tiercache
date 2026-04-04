@@ -1,10 +1,10 @@
 """
-Central serializer for SmartCache.
+Central serializer for TierCache.
 Uses msgpack instead of pickle — safe, fast, compact.
 msgpack cannot execute code on deserialization unlike pickle.
 
 Supported types: bytes, str, int, float, bool, None, list, dict.
-This covers all SmartCache use cases (images, metadata dicts, etc.)
+This covers all TierCache use cases (images, metadata dicts, etc.)
 """
 
 import msgpack

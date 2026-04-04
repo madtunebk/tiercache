@@ -1,5 +1,5 @@
 """
-SmartCache — RAM-first three-tier cache with swappable backends.
+TierCache — RAM-first three-tier cache with swappable backends.
 
 Quick start:
 

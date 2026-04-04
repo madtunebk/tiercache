@@ -1,5 +1,5 @@
 """
-SmartCache — example HTTP app using FastAPI.
+TierCache — example HTTP app using FastAPI.
 
 Endpoints:
   GET    /cache/{key}           → fetch a cached value (served with correct Content-Type)
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     await _cache.close()
 
 
-app = FastAPI(title="SmartCache demo", lifespan=lifespan)
+app = FastAPI(title="TierCache demo", lifespan=lifespan)
 
 
 def get_cache() -> CacheManager:
