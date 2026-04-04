@@ -13,11 +13,14 @@ from ..base import AbstractBackend
 
 class LocalBackend(AbstractBackend):
     """
-    Local filesystem dry cache. Values are stored as pickled binary files
-    with a JSON sidecar for metadata (TTL, key, created_at).
+    Local filesystem dry cache. Values are stored as binary files
+    with a JSON sidecar for metadata (TTL, key, created_at, size).
 
     Files are sharded into subdirectories by the first 4 hex chars of the
     key hash to avoid large flat directories.
+
+    max_size_bytes is enforced on every set() — oldest files are evicted
+    first (by created_at) to make room for new entries.
 
     Requires: aiofiles (included in base install)
     """
@@ -48,13 +51,18 @@ class LocalBackend(AbstractBackend):
         data_path, meta_path = self._paths(key)
         data_path.parent.mkdir(parents=True, exist_ok=True)
         raw = dumps(value)
+        incoming_size = len(raw)
+
+        # Enforce size limit — evict oldest entries until there is room
+        await self._make_room(incoming_size)
+
         async with aiofiles.open(data_path, "wb") as f:
             await f.write(raw)
         meta = {
             "key": key,
             "created_at": time.time(),
             "ttl_seconds": ttl_seconds,
-            "size": len(raw),
+            "size": incoming_size,
         }
         async with aiofiles.open(meta_path, "w") as f:
             await f.write(json.dumps(meta))
@@ -69,10 +77,18 @@ class LocalBackend(AbstractBackend):
         self._base.mkdir(parents=True, exist_ok=True)
 
     async def size_bytes(self) -> int:
-        total = 0
-        for p in self._base.rglob("*.bin"):
-            total += p.stat().st_size
-        return total
+        return sum(p.stat().st_size for p in self._base.rglob("*.bin"))
+
+    async def cleanup_expired(self) -> int:
+        """Delete all expired files. Returns number of files removed."""
+        removed = 0
+        for meta_path in self._base.rglob("*.meta.json"):
+            meta = self._read_meta(meta_path)
+            if meta and self._expired(meta):
+                data_path = meta_path.with_suffix("").with_suffix(".bin")
+                await self._remove_files(data_path, meta_path)
+                removed += 1
+        return removed
 
     async def close(self) -> None:
         pass
@@ -80,6 +96,28 @@ class LocalBackend(AbstractBackend):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    async def _make_room(self, incoming_size: int) -> None:
+        """Evict oldest entries until incoming_size fits within max_size_bytes."""
+        current = await self.size_bytes()
+        if current + incoming_size <= self._max_size:
+            return
+
+        # Collect all entries sorted by created_at (oldest first)
+        entries = []
+        for meta_path in self._base.rglob("*.meta.json"):
+            meta = self._read_meta(meta_path)
+            if meta:
+                data_path = meta_path.with_suffix("").with_suffix(".bin")
+                entries.append((meta.get("created_at", 0), meta.get("size", 0), data_path, meta_path))
+
+        entries.sort(key=lambda x: x[0])  # oldest first
+
+        for created_at, size, data_path, meta_path in entries:
+            if current + incoming_size <= self._max_size:
+                break
+            await self._remove_files(data_path, meta_path)
+            current -= size
 
     def _paths(self, key: str) -> tuple[Path, Path]:
         h = hashlib.sha256(key.encode()).hexdigest()
