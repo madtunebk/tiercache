@@ -128,7 +128,7 @@ def _build_tracking(tracking_cfg: dict, root_cfg: dict) -> AbstractTracking:
 def _build_ttl_resolver(root_cfg: dict) -> TTLResolver:
     hot_ttl  = _ttl_to_seconds(root_cfg.get("hot_cache",  {}).get("ttl_hours", 4))
     cold_ttl = _ttl_to_seconds(root_cfg.get("cold_cache", {}).get("ttl_hours", 24))
-    dry_ttl  = _ttl_to_seconds(root_cfg.get("dry_cache",  {}).get("ttl_hours"))
+    dry_ttl  = _ttl_to_seconds(root_cfg.get("dry_cache",  {}).get("ttl_hours", 168))  # 7 days
 
     defaults = {"hot": hot_ttl, "cold": cold_ttl, "dry": dry_ttl}
 
