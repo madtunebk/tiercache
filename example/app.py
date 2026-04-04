@@ -20,6 +20,8 @@ Run:
   uvicorn example.app:app --reload --port 8989
 """
 
+import asyncio
+import logging
 import mimetypes
 import os
 from contextlib import asynccontextmanager
@@ -29,6 +31,9 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 
 from tiercache import CacheManager
+from tiercache.backends.dry.local import LocalBackend
+
+logger = logging.getLogger(__name__)
 
 # Override with TIERCACHE_CONFIG env var to switch between configs:
 #   TIERCACHE_CONFIG=example/config_ram.yaml        uvicorn ...
@@ -40,11 +45,34 @@ _cache: Optional[CacheManager] = None
 _FALLBACK_CT = "application/octet-stream"
 
 
+async def _cleanup_loop(cache: CacheManager, interval_hours: float = 24) -> None:
+    """Periodically purge expired files from local dry cache and stale SQLite entries."""
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            if isinstance(cache._dry, LocalBackend):
+                removed = await cache._dry.cleanup_expired()
+                logger.info("Dry cache cleanup: removed %d expired files", removed)
+        except Exception as e:
+            logger.warning("Dry cache cleanup failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cache
     _cache = CacheManager.from_config(str(_CONFIG))
+
+    # Clean up any expired files left from previous run
+    if isinstance(_cache._dry, LocalBackend):
+        removed = await _cache._dry.cleanup_expired()
+        logger.info("Startup cleanup: removed %d expired dry cache files", removed)
+
+    # Run periodic cleanup every 24h
+    cleanup_task = asyncio.create_task(_cleanup_loop(_cache))
+
     yield
+
+    cleanup_task.cancel()
     await _cache.close()
 
 
