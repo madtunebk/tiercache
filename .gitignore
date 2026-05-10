@@ -32,6 +32,7 @@ htmlcov/
 # Project specific
 media/
 notes.txt
+design.txt
 
 # PyPI token
 __token__

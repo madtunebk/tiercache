@@ -25,5 +25,9 @@ class AbstractBackend(ABC):
         """Current memory/storage usage in bytes."""
 
     @abstractmethod
+    async def keys(self) -> list[str]:
+        """Return all live (non-expired) keys."""
+
+    @abstractmethod
     async def close(self) -> None:
         """Release any connections or resources."""

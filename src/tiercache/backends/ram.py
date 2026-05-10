@@ -77,6 +77,11 @@ class RamBackend(AbstractBackend):
     async def size_bytes(self) -> int:
         return self._current_size
 
+    async def keys(self) -> list[str]:
+        async with self._lock:
+            now = time.monotonic()
+            return [k for k, (_, expiry) in self._store.items() if not self._expired(expiry)]
+
     async def close(self) -> None:
         pass
 

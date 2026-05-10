@@ -148,6 +148,18 @@ class CacheManager:
         base["dry_size_bytes"]  = await self._dry.size_bytes()
         return base
 
+    async def keys(self) -> list[str]:
+        return await self._hot.keys()
+
+    async def purge(self, pattern: str) -> list[str]:
+        """Delete all hot keys matching a glob-style pattern. Returns deleted keys."""
+        import fnmatch
+        all_keys = await self._hot.keys()
+        matched = [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
+        for k in matched:
+            await self.delete(k)
+        return matched
+
     async def close(self) -> None:
         await self._hot.close()
         await self._cold.close()
