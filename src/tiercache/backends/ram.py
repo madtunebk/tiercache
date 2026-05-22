@@ -45,7 +45,9 @@ class RamBackend(AbstractBackend):
                 return None
             value, expiry = entry
             if self._expired(expiry):
-                self._remove(key, evict=False)  # expired — don't demote to dry
+                # Expired entries are treated as evictions so CacheManager
+                # can demote them to dry via the eviction callback.
+                await self._remove(key, evict=True)
                 return None
             self._store.move_to_end(key)
             return value
@@ -59,7 +61,7 @@ class RamBackend(AbstractBackend):
                 old_value, _ = self._store[key]
                 self._current_size -= self._measure(old_value)
             while self._current_size + size > self._max_size and self._store:
-                self._remove(next(iter(self._store)), evict=True)  # LRU — demote to dry
+                await self._remove(next(iter(self._store)), evict=True)  # LRU — demote to dry
             self._store[key] = (value, expiry)
             self._store.move_to_end(key)
             self._current_size += size
@@ -67,7 +69,7 @@ class RamBackend(AbstractBackend):
     async def delete(self, key: str) -> None:
         async with self._lock:
             if key in self._store:
-                self._remove(key, evict=False)  # explicit delete — don't demote to dry
+                await self._remove(key, evict=False)  # explicit delete — don't demote to dry
 
     async def flush(self) -> None:
         async with self._lock:
@@ -89,11 +91,11 @@ class RamBackend(AbstractBackend):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _remove(self, key: str, evict: bool = False) -> None:
+    async def _remove(self, key: str, evict: bool = False) -> None:
         value, _ = self._store.pop(key)
         self._current_size -= self._measure(value)
         if evict and self._on_evict is not None:
-            asyncio.create_task(self._on_evict(key, value))
+            await self._on_evict(key, value)
 
     @staticmethod
     def _expired(expiry: float) -> bool:

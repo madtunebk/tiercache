@@ -12,7 +12,7 @@ class MongoDBBackend(AbstractBackend):
     files collection. A TTL index on `metadata.expires_at` lets MongoDB
     handle expiry automatically — no cron job needed.
 
-    Requires: pip install smartcache[mongodb]
+    Requires: pip install tiercache[mongodb]
     """
 
     def __init__(self, uri: str, database: str) -> None:
@@ -21,7 +21,7 @@ class MongoDBBackend(AbstractBackend):
         except ImportError:
             raise ImportError(
                 "MongoDB backend requires motor. "
-                "Install it with: pip install smartcache[mongodb]"
+                "Install it with: pip install tiercache[mongodb]"
             )
         self._motor = motor
         self._uri = uri
@@ -95,6 +95,23 @@ class MongoDBBackend(AbstractBackend):
             {"$group": {"_id": None, "total": {"$sum": "$length"}}}
         ]).to_list(length=1)
         return result[0]["total"] if result else 0
+
+    async def keys(self) -> list[str]:
+        fs = await self._get_fs()
+        now = time.time()
+        keys: list[str] = []
+        cursor = fs.find({})
+        docs = await cursor.to_list(length=None)
+        for doc in docs:
+            metadata = doc.get("metadata", {})
+            expires_at = metadata.get("expires_at")
+            if expires_at and now > expires_at:
+                await fs.delete(doc["_id"])
+                continue
+            key = metadata.get("cache_key")
+            if isinstance(key, str):
+                keys.append(key)
+        return keys
 
     async def close(self) -> None:
         if self._client is not None:

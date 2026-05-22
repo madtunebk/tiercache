@@ -79,6 +79,21 @@ class LocalBackend(AbstractBackend):
     async def size_bytes(self) -> int:
         return sum(p.stat().st_size for p in self._base.rglob("*.bin"))
 
+    async def keys(self) -> list[str]:
+        keys: list[str] = []
+        for meta_path in self._base.rglob("*.meta.json"):
+            meta = self._read_meta(meta_path)
+            if meta is None:
+                continue
+            if self._expired(meta):
+                data_path = meta_path.with_suffix("").with_suffix(".bin")
+                await self._remove_files(data_path, meta_path)
+                continue
+            key = meta.get("key")
+            if isinstance(key, str):
+                keys.append(key)
+        return keys
+
     async def cleanup_expired(self) -> int:
         """Delete all expired files. Returns number of files removed."""
         removed = 0

@@ -18,7 +18,7 @@ class MemcachedBackend(AbstractBackend):
     TTL is enforced natively by Memcached.
     Suitable for multi-process or multi-server deployments.
 
-    Requires: pip install smartcache[memcached]
+    Requires: pip install tiercache[memcached]
     """
 
     def __init__(self, host: str, port: int, ttl_seconds: int, max_size_bytes: int) -> None:
@@ -27,7 +27,7 @@ class MemcachedBackend(AbstractBackend):
         except ImportError:
             raise ImportError(
                 "Memcached backend requires aiomcache. "
-                "Install it with: pip install smartcache[memcached]"
+                "Install it with: pip install tiercache[memcached]"
             )
         self._aiomcache = aiomcache
         self._host = host
@@ -108,6 +108,11 @@ class MemcachedBackend(AbstractBackend):
     async def size_bytes(self) -> int:
         # Memcached does not expose per-key sizes
         return 0
+
+    async def keys(self) -> list[str]:
+        # aiomcache does not provide a portable async key listing API and
+        # Memcached does not guarantee safe key iteration in production.
+        return []
 
     async def close(self) -> None:
         if self._client is not None:

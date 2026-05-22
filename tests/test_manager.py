@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from tiercache import CacheManager
 from tiercache.backends.ram import RamBackend
 from tiercache.backends.dry.local import LocalBackend
@@ -88,3 +89,21 @@ async def test_context_manager_close(tmp_path):
         tracking=SQLiteTracking(path=str(tmp_path / "idx.db")),
     )
     await c.close()  # should not raise
+
+
+async def test_hot_ttl_expiry_demotes_to_dry(tmp_path):
+    cache = CacheManager(
+        hot=RamBackend(ttl_seconds=1, max_size_bytes=1024 * 1024),
+        cold=RamBackend(ttl_seconds=60, max_size_bytes=1024 * 1024),
+        dry=LocalBackend(base_path=str(tmp_path / "dry"), max_size_bytes=1024 ** 3),
+        tracking=SQLiteTracking(path=str(tmp_path / "index.db")),
+    )
+
+    await cache.set("ttl-key", b"payload")
+    assert await cache.get("ttl-key") == b"payload"
+
+    await asyncio.sleep(1.1)
+
+    # Expiry in hot should demote to dry; the next get should hit dry and
+    # promote back to hot through CacheManager.
+    assert await cache.get("ttl-key") == b"payload"
