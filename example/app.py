@@ -31,7 +31,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 
 from tiercache import CacheManager
-from tiercache.backends.dry.local import LocalBackend
+from tiercache.backends.dry import LocalBackend
 
 logger = logging.getLogger(__name__)
 
