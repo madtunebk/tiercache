@@ -13,8 +13,8 @@ class AbstractTracking(ABC):
         """Increment miss counter."""
 
     @abstractmethod
-    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None) -> None:
-        """Record a new key being stored."""
+    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None, ttl_seconds: Optional[int] = None, reset_hits: bool = True) -> None:
+        """Record a new key being stored. reset_hits=False preserves hit_count on tier changes."""
 
     @abstractmethod
     async def record_delete(self, key: str) -> None:

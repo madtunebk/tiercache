@@ -28,7 +28,7 @@ Quick start:
 """
 
 from .manager import CacheManager, TTLResolver
-from .backends.base import AbstractBackend
+from .backends.base import AbstractBackend, MISS
 from .backends.null import NullBackend
 from .tracking.base import AbstractTracking
 from .tracking.null import NullTracking
@@ -37,6 +37,7 @@ __all__ = [
     "CacheManager",
     "TTLResolver",
     "AbstractBackend",
+    "MISS",
     "NullBackend",
     "AbstractTracking",
     "NullTracking",

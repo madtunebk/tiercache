@@ -49,7 +49,7 @@ class RedisTracking(AbstractTracking):
         r = await self._conn()
         await r.hincrby(_STATS_KEY, "misses", 1)
 
-    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None) -> None:
+    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None, ttl_seconds: Optional[int] = None, reset_hits: bool = True) -> None:
         r = await self._conn()
         meta: dict[str, str] = {
             "tier": tier,

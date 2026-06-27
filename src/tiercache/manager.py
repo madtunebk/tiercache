@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Optional
 
-from .backends.base import AbstractBackend
+from .backends.base import AbstractBackend, MISS
 from .tracking.base import AbstractTracking
 
 
@@ -67,7 +67,10 @@ class CacheManager:
         self._cold = cold
         self._dry = dry
         self._tracking = tracking
-        self._ttl_resolver = ttl_resolver or TTLResolver({}, [])
+        self._ttl_resolver = ttl_resolver or TTLResolver(
+            defaults={"hot": hot.default_ttl, "cold": cold.default_ttl, "dry": dry.default_ttl},
+            rules=[],
+        )
         self._wire_eviction_hooks()
 
     # ------------------------------------------------------------------
@@ -82,12 +85,12 @@ class CacheManager:
             self._cold._on_evict = self._on_cold_evict
 
     async def _on_hot_evict(self, key: str, value: Any) -> None:
-        """Hot evicted → demote to dry (failsafe)."""
         await self._dry.set(key, value)
+        await self._tracking.record_set(key, "dry", reset_hits=False)
 
     async def _on_cold_evict(self, key: str, value: Any) -> None:
-        """Cold evicted → demote to dry (failsafe)."""
         await self._dry.set(key, value)
+        await self._tracking.record_set(key, "dry", reset_hits=False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -95,20 +98,22 @@ class CacheManager:
 
     async def get(self, key: str) -> Optional[Any]:
         value = await self._hot.get(key)
-        if value is not None:
+        if value is not MISS:
             await self._tracking.record_hit(key, "hot")
             return value
 
         value = await self._cold.get(key)
-        if value is not None:
+        if value is not MISS:
             await self._tracking.record_hit(key, "cold")
             await self._hot.set(key, value)
+            await self._tracking.record_set(key, "hot", reset_hits=False)
             return value
 
         value = await self._dry.get(key)
-        if value is not None:
+        if value is not MISS:
             await self._tracking.record_hit(key, "dry")
             await self._hot.set(key, value)
+            await self._tracking.record_set(key, "hot", reset_hits=False)
             return value
 
         await self._tracking.record_miss(key)
@@ -125,7 +130,7 @@ class CacheManager:
 
         hot_ttl = self._ttl_resolver.resolve("hot", ttl_seconds, tags)
         await self._hot.set(key, value, ttl_seconds=hot_ttl)
-        await self._tracking.record_set(key, "hot", tags=tags)
+        await self._tracking.record_set(key, "hot", tags=tags, ttl_seconds=hot_ttl, reset_hits=True)
 
     async def delete(self, key: str) -> None:
         await self._hot.delete(key)
@@ -160,6 +165,24 @@ class CacheManager:
             await self.delete(k)
         return matched
 
+    async def cleanup_expired(self) -> int:
+        """
+        Scan hot and cold RAM tiers for expired entries, demote them to dry,
+        and update tracking. Call periodically to keep tier tracking accurate.
+        Returns the number of entries demoted.
+        """
+        from .backends.ram import RamBackend
+        count = 0
+        if isinstance(self._hot, RamBackend):
+            for key, value in await self._hot.pop_expired():
+                await self._on_hot_evict(key, value)
+                count += 1
+        if isinstance(self._cold, RamBackend):
+            for key, value in await self._cold.pop_expired():
+                await self._on_cold_evict(key, value)
+                count += 1
+        return count
+
     async def close(self) -> None:
         await self._hot.close()
         await self._cold.close()
@@ -190,6 +213,9 @@ class CacheManager:
 
     def stats_sync(self) -> dict[str, Any]:
         return _run(self.stats())
+
+    def cleanup_expired_sync(self) -> int:
+        return _run(self.cleanup_expired())
 
     # ------------------------------------------------------------------
     # Factory

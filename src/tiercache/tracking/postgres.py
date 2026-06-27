@@ -65,7 +65,7 @@ class PostgresTracking(AbstractTracking):
                 "UPDATE cache_stats SET value = value + 1 WHERE name = 'misses'"
             )
 
-    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None) -> None:
+    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None, ttl_seconds: Optional[int] = None, reset_hits: bool = True) -> None:
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             await conn.execute(

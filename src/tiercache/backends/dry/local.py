@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -8,7 +10,7 @@ import aiofiles
 import aiofiles.os
 
 from ...serializer import dumps, loads
-from ..base import AbstractBackend
+from ..base import AbstractBackend, MISS
 
 
 class LocalBackend(AbstractBackend):
@@ -34,16 +36,16 @@ class LocalBackend(AbstractBackend):
     # Public interface
     # ------------------------------------------------------------------
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any:
         data_path, meta_path = self._paths(key)
         if not data_path.exists():
-            return None
-        meta = self._read_meta(meta_path)
+            return MISS
+        meta = await self._read_meta(meta_path)
         if meta is None:
-            return None
+            return MISS
         if self._expired(meta):
             await self._remove_files(data_path, meta_path)
-            return None
+            return MISS
         async with aiofiles.open(data_path, "rb") as f:
             return loads(await f.read())
 
@@ -53,7 +55,6 @@ class LocalBackend(AbstractBackend):
         raw = dumps(value)
         incoming_size = len(raw)
 
-        # Enforce size limit — evict oldest entries until there is room
         await self._make_room(incoming_size)
 
         async with aiofiles.open(data_path, "wb") as f:
@@ -72,17 +73,19 @@ class LocalBackend(AbstractBackend):
         await self._remove_files(data_path, meta_path)
 
     async def flush(self) -> None:
-        import shutil
-        shutil.rmtree(self._base, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, self._base, True)
         self._base.mkdir(parents=True, exist_ok=True)
 
     async def size_bytes(self) -> int:
-        return sum(p.stat().st_size for p in self._base.rglob("*.bin"))
+        return await asyncio.to_thread(
+            lambda: sum(p.stat().st_size for p in self._base.rglob("*.bin"))
+        )
 
     async def keys(self) -> list[str]:
+        meta_paths = await asyncio.to_thread(lambda: list(self._base.rglob("*.meta.json")))
         keys: list[str] = []
-        for meta_path in self._base.rglob("*.meta.json"):
-            meta = self._read_meta(meta_path)
+        for meta_path in meta_paths:
+            meta = await self._read_meta(meta_path)
             if meta is None:
                 continue
             if self._expired(meta):
@@ -96,9 +99,10 @@ class LocalBackend(AbstractBackend):
 
     async def cleanup_expired(self) -> int:
         """Delete all expired files. Returns number of files removed."""
+        meta_paths = await asyncio.to_thread(lambda: list(self._base.rglob("*.meta.json")))
         removed = 0
-        for meta_path in self._base.rglob("*.meta.json"):
-            meta = self._read_meta(meta_path)
+        for meta_path in meta_paths:
+            meta = await self._read_meta(meta_path)
             if meta and self._expired(meta):
                 data_path = meta_path.with_suffix("").with_suffix(".bin")
                 await self._remove_files(data_path, meta_path)
@@ -113,22 +117,21 @@ class LocalBackend(AbstractBackend):
     # ------------------------------------------------------------------
 
     async def _make_room(self, incoming_size: int) -> None:
-        """Evict oldest entries until incoming_size fits within max_size_bytes."""
         current = await self.size_bytes()
         if current + incoming_size <= self._max_size:
             return
 
-        # Collect all entries sorted by created_at (oldest first)
+        meta_paths = await asyncio.to_thread(lambda: list(self._base.rglob("*.meta.json")))
         entries = []
-        for meta_path in self._base.rglob("*.meta.json"):
-            meta = self._read_meta(meta_path)
+        for meta_path in meta_paths:
+            meta = await self._read_meta(meta_path)
             if meta:
                 data_path = meta_path.with_suffix("").with_suffix(".bin")
                 entries.append((meta.get("created_at", 0), meta.get("size", 0), data_path, meta_path))
 
-        entries.sort(key=lambda x: x[0])  # oldest first
+        entries.sort(key=lambda x: x[0])
 
-        for created_at, size, data_path, meta_path in entries:
+        for _, size, data_path, meta_path in entries:
             if current + incoming_size <= self._max_size:
                 break
             await self._remove_files(data_path, meta_path)
@@ -140,10 +143,11 @@ class LocalBackend(AbstractBackend):
         return shard / f"{h}.bin", shard / f"{h}.meta.json"
 
     @staticmethod
-    def _read_meta(path: Path) -> Optional[dict]:
+    async def _read_meta(path: Path) -> Optional[dict]:
         try:
-            return json.loads(path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
+            async with aiofiles.open(path) as f:
+                return json.loads(await f.read())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
             return None
 
     @staticmethod

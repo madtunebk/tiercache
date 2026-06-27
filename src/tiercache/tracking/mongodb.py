@@ -58,12 +58,13 @@ class MongoDBTracking(AbstractTracking):
             {"_id": "global"}, {"$inc": {"misses": 1}}
         )
 
-    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None) -> None:
+    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None, ttl_seconds: Optional[int] = None, reset_hits: bool = True) -> None:
         db = await self._get_db()
         doc: dict[str, Any] = {
             "key": key,
             "tier": tier,
             "created_at": time.time(),
+            "ttl_seconds": ttl_seconds,
             "hit_count": 0,
         }
         if tags:

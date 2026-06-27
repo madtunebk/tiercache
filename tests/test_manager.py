@@ -56,10 +56,11 @@ async def test_delete_removes_from_all_tiers(cache):
 
 
 async def test_flush_hot_only(cache):
+    from tiercache.backends.base import MISS
     await cache.set("a", b"1")
     await cache._cold.set("b", b"2")
     await cache.flush(tier="hot")
-    assert await cache._hot.get("a") is None
+    assert await cache._hot.get("a") is MISS
     assert await cache._cold.get("b") == b"2"
 
 

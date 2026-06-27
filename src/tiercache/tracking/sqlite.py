@@ -49,7 +49,7 @@ class SQLiteTracking(AbstractTracking):
             "UPDATE cache_tracking SET hit_count = hit_count + 1 WHERE key = ?", (key,)
         )
         await db.execute(
-            f"UPDATE cache_stats SET value = value + 1 WHERE name = ?", (f"{tier}_hits",)
+            "UPDATE cache_stats SET value = value + 1 WHERE name = ?", (f"{tier}_hits",)
         )
         await db.commit()
 
@@ -58,20 +58,34 @@ class SQLiteTracking(AbstractTracking):
         await db.execute("UPDATE cache_stats SET value = value + 1 WHERE name = 'misses'")
         await db.commit()
 
-    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None) -> None:
+    async def record_set(self, key: str, tier: str, tags: Optional[dict] = None, ttl_seconds: Optional[int] = None, reset_hits: bool = True) -> None:
         db = await self._conn()
-        await db.execute(
-            """
-            INSERT INTO cache_tracking (key, tier, created_at, tags)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-                tier = excluded.tier,
-                created_at = excluded.created_at,
-                tags = excluded.tags,
-                hit_count = 0
-            """,
-            (key, tier, time.time(), json.dumps(tags) if tags else None),
-        )
+        if reset_hits:
+            await db.execute(
+                """
+                INSERT INTO cache_tracking (key, tier, created_at, ttl_seconds, tags)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    tier       = excluded.tier,
+                    created_at = excluded.created_at,
+                    ttl_seconds = excluded.ttl_seconds,
+                    tags       = excluded.tags,
+                    hit_count  = 0
+                """,
+                (key, tier, time.time(), ttl_seconds, json.dumps(tags) if tags else None),
+            )
+        else:
+            # Tier change (promotion / eviction) — preserve hit history
+            await db.execute(
+                """
+                INSERT INTO cache_tracking (key, tier, created_at, ttl_seconds, tags)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    tier        = excluded.tier,
+                    ttl_seconds = excluded.ttl_seconds
+                """,
+                (key, tier, time.time(), ttl_seconds, json.dumps(tags) if tags else None),
+            )
         await db.commit()
 
     async def record_delete(self, key: str) -> None:

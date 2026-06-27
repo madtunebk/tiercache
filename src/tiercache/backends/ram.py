@@ -4,7 +4,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Awaitable, Callable, Optional
 
-from .base import AbstractBackend
+from .base import AbstractBackend, MISS
 
 EvictCallback = Callable[[str, Any], Awaitable[None]]
 
@@ -18,6 +18,7 @@ class RamBackend(AbstractBackend):
     on_evict: optional async callback(key, value) fired when an entry is
     dropped due to LRU pressure or TTL expiry. Used by CacheManager to
     demote evicted entries to dry cache (failsafe).
+    Callbacks are fired AFTER releasing the lock to avoid holding it during I/O.
     """
 
     def __init__(
@@ -38,39 +39,48 @@ class RamBackend(AbstractBackend):
     # Public interface
     # ------------------------------------------------------------------
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any:
+        eviction = None
+        result = MISS
         async with self._lock:
             entry = self._store.get(key)
-            if entry is None:
-                return None
-            value, expiry, ttl = entry
-            if self._expired(expiry):
-                await self._remove(key, evict=True)  # expired → demote to dry
-                return None
-            # Reset TTL on hit (sliding window) and update LRU position
-            new_expiry = time.monotonic() + ttl if ttl else 0.0
-            self._store[key] = (value, new_expiry, ttl)
-            self._store.move_to_end(key)
-            return value
+            if entry is not None:
+                value, expiry, ttl = entry
+                if self._expired(expiry):
+                    eviction = self._remove(key, evict=True)
+                else:
+                    new_expiry = time.monotonic() + ttl if ttl else 0.0
+                    self._store[key] = (value, new_expiry, ttl)
+                    self._store.move_to_end(key)
+                    result = value
+        if eviction and self._on_evict:
+            await self._on_evict(*eviction)
+        return result
 
     async def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         ttl = ttl_seconds if ttl_seconds is not None else self._ttl
         expiry = time.monotonic() + ttl if ttl else 0.0
         size = self._measure(value)
+        evictions: list[tuple[str, Any]] = []
         async with self._lock:
             if key in self._store:
                 old_value, _, _ = self._store[key]
                 self._current_size -= self._measure(old_value)
             while self._current_size + size > self._max_size and self._store:
-                await self._remove(next(iter(self._store)), evict=True)  # LRU — demote to dry
+                ev = self._remove(next(iter(self._store)), evict=True)
+                if ev:
+                    evictions.append(ev)
             self._store[key] = (value, expiry, ttl)
             self._store.move_to_end(key)
             self._current_size += size
+        if self._on_evict:
+            for k, v in evictions:
+                await self._on_evict(k, v)
 
     async def delete(self, key: str) -> None:
         async with self._lock:
             if key in self._store:
-                await self._remove(key, evict=False)  # explicit delete — don't demote to dry
+                self._remove(key, evict=False)  # explicit delete — don't demote to dry
 
     async def flush(self) -> None:
         async with self._lock:
@@ -84,18 +94,35 @@ class RamBackend(AbstractBackend):
         async with self._lock:
             return [k for k, (_, expiry, _) in self._store.items() if not self._expired(expiry)]
 
+    async def pop_expired(self) -> list[tuple[str, Any]]:
+        """Remove all expired entries and return (key, value) pairs for the caller to demote."""
+        expired = []
+        async with self._lock:
+            for key, (value, expiry, _) in list(self._store.items()):
+                if self._expired(expiry):
+                    self._store.pop(key)
+                    self._current_size -= self._measure(value)
+                    expired.append((key, value))
+        return expired
+
     async def close(self) -> None:
         pass
+
+    @property
+    def default_ttl(self) -> Optional[int]:
+        return self._ttl or None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _remove(self, key: str, evict: bool = False) -> None:
+    def _remove(self, key: str, evict: bool = False) -> Optional[tuple[str, Any]]:
+        """Remove key from store. Returns (key, value) if caller should fire eviction, else None."""
         value, _, _ = self._store.pop(key)
         self._current_size -= self._measure(value)
         if evict and self._on_evict is not None:
-            await self._on_evict(key, value)
+            return (key, value)
+        return None
 
     @staticmethod
     def _expired(expiry: float) -> bool:
